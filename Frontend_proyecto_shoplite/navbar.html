@@ -1,0 +1,157 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">ShopLite</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <!-- Menú CLIENTE -->
+      <ul class="navbar-nav me-auto" id="menu-cliente">
+        <li class="nav-item"><a class="nav-link" href="index.html">Inicio</a></li>
+        <li class="nav-item"><a class="nav-link" href="carrito.html">Carrito</a></li>
+        <li class="nav-item"><a class="nav-link" href="mis-pedidos.html">Mis Pedidos</a></li>
+      </ul>
+
+      <!-- Menú ADMIN -->
+      <ul class="navbar-nav me-auto d-none" id="menu-admin">
+        <li class="nav-item"><a class="nav-link" href="admin.html">Artículos</a></li>
+        <li class="nav-item"><a class="nav-link" href="admin_pedidos.html">Pedidos</a></li>
+      </ul>
+
+      <div class="d-flex align-items-center">
+        <form id="form-login" class="d-flex" onsubmit="loginUsuario(event)">
+          <input class="form-control me-2" type="text" id="nombreUsuario" placeholder="Usuario" required>
+          <input class="form-control me-2" type="password" id="claveUsuario" placeholder="Clave" required>
+          <button class="btn btn-outline-light" type="submit">Ingresar</button>
+          <button class="btn btn-outline-light ms-2" type="button" data-bs-toggle="modal" data-bs-target="#modalRegistro">
+            Registrarse
+          </button>
+        </form>
+
+        <div id="info-usuario-container" class="d-none">
+          <span class="text-white me-2" id="info-usuario"></span>
+          <button class="btn btn-outline-light btn-sm" onclick="cerrarSesion()">Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Modal de Registro -->
+<div class="modal fade" id="modalRegistro" tabindex="-1" aria-labelledby="modalRegistroLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form onsubmit="registrarUsuario(event)">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalRegistroLabel">Registro de Usuario</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="form-control mb-2" placeholder="Nombre" id="registroNombre" required>
+          <input type="password" class="form-control mb-2" placeholder="Clave (mínimo 6 caracteres)" id="registroClave" required>
+          <input type="text" class="form-control mb-2" placeholder="DNI (8 dígitos)" id="registroDni" required>
+          <input type="text" class="form-control mb-2" placeholder="Dirección" id="registroDireccion">
+          <input type="text" class="form-control mb-2" placeholder="Teléfono" id="registroTelefono">
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Registrarse</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const usuario = JSON.parse(localStorage.getItem("usuario"));
+
+  if (usuario) {
+    const contenedorUsuario = document.getElementById("info-usuario");
+    const formLogin = document.getElementById("form-login");
+    const contenedorInfo = document.getElementById("info-usuario-container");
+
+    if (contenedorUsuario && formLogin && contenedorInfo) {
+      contenedorUsuario.textContent = `Hola, ${usuario.nombre}`;
+      formLogin.classList.add("d-none");
+      contenedorInfo.classList.remove("d-none");
+    }
+
+    // Mostrar menú según tipo de usuario
+    if (usuario.idTipoUsuario === 2) {
+      document.getElementById("menu-admin")?.classList.remove("d-none");
+      document.getElementById("menu-cliente")?.classList.add("d-none");
+    } else {
+      document.getElementById("menu-cliente")?.classList.remove("d-none");
+      document.getElementById("menu-admin")?.classList.add("d-none");
+    }
+  }
+  function cerrarSesion() {
+   localStorage.removeItem("usuario");
+    // Redirige al usuario a la página de inicio (index.html)
+    window.location.href = "index.html";
+  }
+
+  function registrarUsuario(event) {
+  event.preventDefault();
+
+  const nombre = document.getElementById("registroNombre").value.trim();
+  const clave = document.getElementById("registroClave").value.trim();
+  const dni = document.getElementById("registroDni").value.trim();
+  const direccion = document.getElementById("registroDireccion").value.trim();
+  const telefono = document.getElementById("registroTelefono").value.trim();
+
+  if (dni.length !== 8 || isNaN(dni)) {
+    alert("El DNI debe tener 8 dígitos numéricos.");
+    return;
+  }
+  if (clave.length < 6) {
+    alert("La clave debe tener al menos 6 caracteres.");
+    return;
+  }
+
+  // Verificar si el DNI ya está registrado
+  fetch("http://localhost:8080/api/usuarios")
+    .then(res => res.json())
+    .then(usuarios => {
+      const existente = usuarios.find(u => u.dni === dni);
+      if (existente) {
+        alert("Ya existe un usuario registrado con ese DNI.");
+        document.querySelector("#modalRegistro form").reset();
+        return;
+      }
+
+      // Si no existe, continuar con el registro
+      const nuevoUsuario = {
+        nombre,
+        clave,
+        dni,
+        direccion,
+        telefono,
+        estado: true,
+        idTipoUsuario: 1
+      };
+
+      return fetch("http://localhost:8080/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nuevoUsuario)
+      })
+      .then(res => {
+        if (!res.ok) {
+          return res.text().then(msg => { throw new Error("Error al registrar usuario: " + msg); });
+        }
+        return res.json();
+      })
+      .then(usuario => {
+        alert("Usuario registrado correctamente");
+        localStorage.setItem("usuario", JSON.stringify(usuario));
+        document.querySelector("#modalRegistro .btn-close").click();
+        location.reload();
+      });
+    })
+    .catch(error => {
+      alert(error.message);
+    });
+}
+
+</script>

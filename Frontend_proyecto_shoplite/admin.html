@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin - Gestión de Artículos - ShopLite</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+</head>
+<body>
+
+  <div id="navbar-placeholder"></div>
+  <script>
+    fetch("navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById("navbar-placeholder").innerHTML = html;
+
+        const scripts = document.getElementById("navbar-placeholder").querySelectorAll("script");
+        scripts.forEach(script => {
+          const nuevoScript = document.createElement("script");
+          if (script.src) {
+            nuevoScript.src = script.src;
+          } else {
+            nuevoScript.textContent = script.textContent;
+          }
+          document.body.appendChild(nuevoScript);
+        });
+
+        const usuario = JSON.parse(localStorage.getItem("usuario"));
+        if (!usuario || usuario.idTipoUsuario !== 2) {
+          document.body.innerHTML = '<div class="container mt-5"><div class="alert alert-danger">No tienes permisos para acceder a esta página.</div></div>';
+          throw new Error("No autorizado");
+        }
+
+        const intervalo = setInterval(() => {
+          const contenedorUsuario = document.getElementById("info-usuario");
+          const formLogin = document.getElementById("form-login");
+          const contenedorInfo = document.getElementById("info-usuario-container");
+          const menuCliente = document.getElementById("menu-cliente");
+          const menuAdmin = document.getElementById("menu-admin");
+
+          if (contenedorUsuario && formLogin && contenedorInfo && menuCliente && menuAdmin) {
+            contenedorUsuario.textContent = `Hola, ${usuario.nombre}`;
+            formLogin.classList.add("d-none");
+            contenedorInfo.classList.remove("d-none");
+
+            menuCliente.classList.add("d-none");
+            menuAdmin.classList.remove("d-none");
+
+            clearInterval(intervalo);
+          }
+        }, 100);
+      });
+  </script>
+
+  <div class="container mt-4">
+    <h3>Gestión de Artículos</h3>
+
+    <input type="text" id="buscar" class="form-control mb-3" placeholder="Buscar por nombre o ID...">
+
+    <form id="form-articulo" class="mb-4">
+      <input type="hidden" id="idArticulo">
+      <div class="mb-3">
+        <label class="form-label">Nombre</label>
+        <input type="text" id="nombre" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Precio</label>
+        <input type="number" id="precio" class="form-control" step="0.01" min="0" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Stock</label>
+        <input type="number" id="stock" class="form-control" min="0" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Descripción</label>
+        <textarea id="descripcion" class="form-control" rows="3"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Guardar</button>
+      <button type="button" id="btn-cancelar" class="btn btn-secondary ms-2 d-none">Cancelar</button>
+    </form>
+
+    <table class="table table-bordered" id="tabla-articulos">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Precio</th>
+          <th>Stock</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="mensaje" class="alert d-none" role="alert"></div>
+  </div>
+
+  <footer class="text-center mt-5 text-muted">
+    <p>Desarrollado por Jonatan Chávez para TalentoTech</p>
+  </footer>
+
+  <script>
+    const tablaBody = document.querySelector("#tabla-articulos tbody");
+    const form = document.getElementById("form-articulo");
+    const mensaje = document.getElementById("mensaje");
+    const btnCancelar = document.getElementById("btn-cancelar");
+    const buscarInput = document.getElementById("buscar");
+
+    let articulos = []; // Almacena todos los artículos para la búsqueda
+
+    /**
+     * Muestra un mensaje en la interfaz de usuario.
+     * @param {string} texto El mensaje a mostrar.
+     * @param {string} tipo El tipo de alerta (e.g., "success", "danger", "info").
+     */
+    function mostrarMensaje(texto, tipo = "success") {
+      mensaje.textContent = texto;
+      mensaje.className = `alert alert-${tipo}`;
+      mensaje.classList.remove("d-none");
+      setTimeout(() => mensaje.classList.add("d-none"), 3000);
+    }
+
+    /**
+     * Carga todos los artículos desde el backend y los renderiza en la tabla.
+     */
+    async function cargarArticulos() {
+      try {
+        const res = await fetch("http://localhost:8080/api/articulos");
+        if (!res.ok) {
+            throw new Error("Error al cargar artículos: " + res.statusText);
+        }
+        articulos = await res.json(); // Guarda todos los artículos
+        renderTabla(articulos);
+      } catch (err) {
+        mostrarMensaje("Error al cargar artículos: " + err.message, "danger");
+        console.error("Error al cargar artículos:", err);
+      }
+    }
+
+    /**
+     * Renderiza la tabla de artículos con la lista proporcionada.
+     * @param {Array<Object>} lista La lista de artículos a mostrar.
+     */
+    function renderTabla(lista) {
+      tablaBody.innerHTML = "";
+      if (lista.length === 0) {
+        const filaVacia = document.createElement("tr");
+        filaVacia.innerHTML = `<td colspan="6" class="text-center">No hay artículos para mostrar.</td>`;
+        tablaBody.appendChild(filaVacia);
+        return;
+      }
+      lista.forEach(a => {
+        const fila = document.createElement("tr");
+        fila.innerHTML = `
+          <td>${a.idArticulo}</td>
+          <td>${a.nombre}</td>
+          <td>$${a.precio ? a.precio.toFixed(2) : 'N/A'}</td>
+          <td>${a.stock}</td>
+          <td><span class="badge bg-${a.estado ? "success" : "danger"}">${a.estado ? "Activo" : "Inactivo"}</span></td>
+          <td>
+            <button class="btn btn-warning btn-sm me-2" onclick="editarArticulo(${a.idArticulo})">Editar</button>
+            <button class="btn btn-${a.estado ? "danger" : "success"} btn-sm" onclick="cambiarEstadoArticulo(${a.idArticulo}, ${!a.estado})">
+              ${a.estado ? "Dar de baja" : "Dar de alta"}
+            </button>
+          </td>
+        `;
+        tablaBody.appendChild(fila);
+      });
+    }
+
+    /**
+     * Maneja el envío del formulario para crear o actualizar un artículo.
+     */
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const id = document.getElementById("idArticulo").value;
+      const articulo = {
+        nombre: document.getElementById("nombre").value,
+        precio: parseFloat(document.getElementById("precio").value),
+        stock: parseInt(document.getElementById("stock").value),
+        descripcion: document.getElementById("descripcion").value, // Asegúrate de incluir la descripción
+        estado: true // Por defecto, los nuevos artículos están activos
+      };
+
+      try {
+        let res;
+        let method;
+        let url;
+
+        if (id) { // Si hay un ID, es una actualización (PUT)
+          method = "PUT";
+          url = `http://localhost:8080/api/articulos/${id}`;
+          // Para PUT, obtener el artículo existente y actualizar sus campos
+          const resExistente = await fetch(url);
+          if (!resExistente.ok) throw new Error("Artículo no encontrado para actualizar.");
+          const articuloExistente = await resExistente.json();
+          // Actualizar solo los campos que vienen del formulario
+          articuloExistente.nombre = articulo.nombre;
+          articuloExistente.precio = articulo.precio;
+          articuloExistente.stock = articulo.stock;
+          articuloExistente.descripcion = articulo.descripcion;
+          // El estado no se cambia desde el formulario de edición, solo con el botón de alta/baja
+          res = await fetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(articuloExistente) // Enviar el objeto completo actualizado
+          });
+          mostrarMensaje("Artículo actualizado");
+
+        } else { // Si no hay ID, es una creación (POST)
+          method = "POST";
+          url = "http://localhost:8080/api/articulos";
+          res = await fetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(articulo)
+          });
+          mostrarMensaje("Artículo creado");
+        }
+
+        if (!res.ok) {
+            const errorBody = await res.text();
+            throw new Error(`Error al guardar artículo: ${res.status} - ${errorBody}`);
+        }
+        
+        form.reset();
+        document.getElementById("idArticulo").value = ""; // Limpiar el ID oculto
+        btnCancelar.classList.add("d-none");
+        cargarArticulos(); // Recargar la tabla
+      } catch (err) {
+        mostrarMensaje("Error al guardar artículo: " + err.message, "danger");
+        console.error("Error al guardar artículo:", err);
+      }
+    });
+
+    /**
+     * Carga los datos de un artículo en el formulario para su edición.
+     * @param {number} id El ID del artículo a editar.
+     */
+    async function editarArticulo(id) {
+      try {
+        const res = await fetch(`http://localhost:8080/api/articulos/${id}`);
+        if (!res.ok) {
+            throw new Error("Artículo no encontrado para editar: " + res.statusText);
+        }
+        const a = await res.json();
+        document.getElementById("idArticulo").value = a.idArticulo;
+        document.getElementById("nombre").value = a.nombre;
+        document.getElementById("precio").value = a.precio;
+        document.getElementById("stock").value = a.stock;
+        document.getElementById("descripcion").value = a.descripcion || ''; // Carga la descripción
+        btnCancelar.classList.remove("d-none");
+      } catch (err) {
+        mostrarMensaje("Error al cargar artículo para edición: " + err.message, "danger");
+        console.error("Error al cargar artículo para edición:", err);
+      }
+    }
+
+    /**
+     * Cambia el estado (activo/inactivo) de un artículo.
+     * @param {number} id El ID del artículo.
+     * @param {boolean} nuevoEstado El nuevo estado (true para activo, false para inactivo).
+     */
+    async function cambiarEstadoArticulo(id, nuevoEstado) {
+      try {
+        // 1. Obtener el artículo completo para asegurar que enviamos todos los campos necesarios en el PUT
+        const resArticuloExistente = await fetch(`http://localhost:8080/api/articulos/${id}`);
+        if (!resArticuloExistente.ok) {
+          throw new Error("Error al obtener el artículo para actualizar estado: " + resArticuloExistente.statusText);
+        }
+        const articuloAActualizar = await resArticuloExistente.json();
+
+        // 2. Actualizar solo el estado del artículo
+        articuloAActualizar.estado = nuevoEstado;
+
+        
+
+        // 3. Enviar el artículo completo actualizado al backend
+        const res = await fetch(`http://localhost:8080/api/articulos/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(articuloAActualizar) // Envía el objeto Articulo completo
+        });
+
+        if (!res.ok) {
+          const errorBody = await res.text();
+          throw new Error(`Error al actualizar estado del artículo: ${res.status} - ${errorBody}`);
+        }
+
+        mostrarMensaje(nuevoEstado ? "Artículo dado de alta" : "Artículo dado de baja");
+        cargarArticulos(); // Recargar la tabla para ver el cambio
+      } catch (err) {
+        mostrarMensaje("Error al cambiar estado del artículo: " + err.message, "danger");
+        console.error("Error completo al cambiar estado del artículo:", err);
+      }
+    }
+
+    // Manejador para el botón Cancelar
+    btnCancelar.addEventListener("click", () => {
+      form.reset();
+      document.getElementById("idArticulo").value = "";
+      btnCancelar.classList.add("d-none");
+    });
+
+    // Manejador para la búsqueda en tiempo real
+    buscarInput.addEventListener("input", () => {
+      const q = buscarInput.value.toLowerCase();
+      const filtrado = articulos.filter(a =>
+        (a.nombre && a.nombre.toLowerCase().includes(q)) || // Asegura que 'nombre' no sea null
+        (a.idArticulo && a.idArticulo.toString().includes(q))
+      );
+      renderTabla(filtrado);
+    });
+
+    // Carga los artículos al cargar la página
+    cargarArticulos();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

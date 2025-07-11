@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administrar Pedidos - ShopLite</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <div id="navbar-placeholder"></div>
+  <script>
+    // Carga el navbar dinámicamente
+    fetch("navbar.html")
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById("navbar-placeholder").innerHTML = html;
+
+        // Re-ejecuta los scripts dentro del navbar para que funcionen
+        const scripts = document.getElementById("navbar-placeholder").querySelectorAll("script");
+        scripts.forEach(script => {
+          const nuevoScript = document.createElement("script");
+          if (script.src) {
+            nuevoScript.src = script.src;
+          } else {
+            nuevoScript.textContent = script.textContent;
+          }
+          document.body.appendChild(nuevoScript);
+        });
+
+        // Lógica de autorización para administradores
+        const usuario = JSON.parse(localStorage.getItem("usuario"));
+        if (!usuario || usuario.idTipoUsuario !== 2) {
+          document.body.innerHTML = '<div class="container mt-5"><div class="alert alert-danger">No tienes permisos para acceder a esta página.</div></div>';
+          throw new Error("No autorizado"); // Detiene la ejecución si no es admin
+        }
+
+        // Espera a que el navbar se cargue y actualiza la UI
+        const intervalo = setInterval(() => {
+          const contenedorUsuario = document.getElementById("info-usuario");
+          const formLogin = document.getElementById("form-login");
+          const contenedorInfo = document.getElementById("info-usuario-container");
+          const menuCliente = document.getElementById("menu-cliente");
+          const menuAdmin = document.getElementById("menu-admin");
+
+          if (contenedorUsuario && formLogin && contenedorInfo && menuCliente && menuAdmin) {
+            contenedorUsuario.textContent = `Hola, ${usuario.nombre}`;
+            formLogin.classList.add("d-none");
+            contenedorInfo.classList.remove("d-none");
+
+            menuCliente.classList.add("d-none");
+            menuAdmin.classList.remove("d-none");
+
+            clearInterval(intervalo);
+          }
+        }, 100);
+      });
+  </script>
+
+  <div class="container mt-5">
+    <h3 class="mb-4">Administrar Pedidos</h3>
+    <div id="mensaje" class="alert d-none" role="alert"></div>
+    
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>ID Pedido</th>
+          <th>Cliente</th>
+          <th>Fecha</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tabla-pedidos"></tbody>
+    </table>
+  </div>
+
+  <script>
+    /**
+     * Carga y muestra la lista de pedidos, incluyendo el nombre del usuario.
+     */
+    async function cargarPedidos() {
+      const tabla = document.getElementById("tabla-pedidos");
+      const mensajeDiv = document.getElementById("mensaje");
+      tabla.innerHTML = ""; // Limpia la tabla antes de cargar nuevos datos
+      mensajeDiv.classList.add("d-none"); // Oculta mensajes anteriores
+
+      try {
+        // 1. Obtener todos los usuarios para mapear ID a nombre
+        const resUsuarios = await fetch("http://localhost:8080/api/usuarios");
+        if (!resUsuarios.ok) {
+          throw new Error("Error al obtener usuarios: " + resUsuarios.statusText);
+        }
+        const usuarios = await resUsuarios.json();
+        // Crear un mapa para una búsqueda rápida de nombres de usuario por ID
+        const mapaUsuarios = new Map(usuarios.map(u => [u.idUsuario, u.nombre]));
+
+        // 2. Obtener todos los pedidos
+        const resPedidos = await fetch("http://localhost:8080/api/pedidos");
+        if (!resPedidos.ok) {
+          throw new Error("Error al obtener pedidos: " + resPedidos.statusText);
+        }
+        const pedidos = await resPedidos.json();
+
+        if (pedidos.length === 0) {
+          mensajeDiv.textContent = "No hay pedidos para mostrar.";
+          mensajeDiv.className = "alert alert-info";
+          mensajeDiv.classList.remove("d-none");
+          return;
+        }
+
+        // 3. Renderizar los pedidos en la tabla
+        pedidos.forEach(p => {
+          const nombreUsuario = mapaUsuarios.get(p.idUsuario) || "(Usuario desconocido)";
+          const estadoTexto = p.estado ? "Confirmado" : "Pendiente";
+          const estadoClase = p.estado ? "badge bg-success" : "badge bg-warning text-dark"; // Estilo para el estado
+
+          const fila = document.createElement("tr");
+          fila.innerHTML = `
+            <td>${p.idPedido}</td>
+            <td>${nombreUsuario}</td>
+            <td>${p.fecha}</td>
+            <td><span class="${estadoClase}">${estadoTexto}</span></td>
+            <td>
+              <button class="btn btn-sm btn-warning" onclick="cambiarEstado(${p.idPedido}, ${p.estado})">
+                ${p.estado ? "Marcar como Pendiente" : "Marcar como Confirmado"}
+              </button>
+            </td>
+          `;
+          tabla.appendChild(fila);
+        });
+
+      } catch (err) {
+        mensajeDiv.textContent = "Error al cargar pedidos: " + err.message;
+        mensajeDiv.className = "alert alert-danger";
+        mensajeDiv.classList.remove("d-none");
+        console.error("Error completo al cargar pedidos:", err);
+      }
+    }
+
+    /**
+     * Cambia el estado de un pedido específico (true/false).
+     * @param {number} idPedido El ID del pedido a actualizar.
+     * @param {boolean} estadoActual El estado actual del pedido (true para confirmado, false para pendiente).
+     */
+    async function cambiarEstado(idPedido, estadoActual) {
+      const nuevoEstado = !estadoActual;
+      const mensajeDiv = document.getElementById("mensaje");
+      mensajeDiv.classList.add("d-none"); // Oculta mensajes anteriores
+
+      try {
+        // 1. Obtener el pedido completo para asegurar que enviamos todos los campos necesarios en el PUT
+        const resPedidoExistente = await fetch(`http://localhost:8080/api/pedidos/${idPedido}`);
+        if (!resPedidoExistente.ok) {
+          throw new Error("Error al obtener el pedido para actualizar: " + resPedidoExistente.statusText);
+        }
+        const pedidoAActualizar = await resPedidoExistente.json();
+
+        // 2. Actualizar solo el estado del pedido
+        pedidoAActualizar.estado = nuevoEstado;
+
+        // 3. Enviar el pedido completo actualizado al backend
+        const res = await fetch(`http://localhost:8080/api/pedidos/${idPedido}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pedidoAActualizar) // Envía el objeto Pedido completo
+        });
+
+        if (!res.ok) {
+          const errorBody = await res.text(); // Intenta leer el cuerpo del error
+          throw new Error(`Error al actualizar estado del pedido: ${res.status} - ${errorBody}`);
+        }
+
+        // Si todo fue bien, recargar la lista de pedidos y mostrar mensaje de éxito
+        await cargarPedidos(); // Recarga los pedidos para ver el cambio
+        mensajeDiv.textContent = "Estado actualizado correctamente.";
+        mensajeDiv.className = "alert alert-success";
+        mensajeDiv.classList.remove("d-none");
+
+      } catch (err) {
+        mensajeDiv.textContent = "Error al cambiar el estado: " + err.message;
+        mensajeDiv.className = "alert alert-danger";
+        mensajeDiv.classList.remove("d-none");
+        console.error("Error completo al cambiar estado:", err);
+      }
+    }
+
+    // Carga los pedidos al cargar la página
+    cargarPedidos();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
